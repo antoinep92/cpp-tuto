@@ -204,6 +204,27 @@ template<class T, ValueKind SD, T V> std::ostream & operator<<(std::ostream & s,
 	return s << val.value;
 }
 
+template<int i, bool ok, class T, T... args> struct values_printer {
+	static void f(std::ostream & s, const VALUES<T, args...> & vals) {
+		if(i) s << ", ";
+		s << '$' << at_v<VALUES<T, args...>, i>();
+		values_printer<i+1, (i < len<VALUES<T, args...>>()-1), T, args...>::f(s, vals);
+	}
+};
+template<int i, class T, T... args> struct values_printer<i, false, T, args...> {
+	static void f(std::ostream & s, const VALUES<T, args...> & vals) {}
+};
+
+template<class T, T... args> inline void print_values(std::ostream & s, const VALUES<T, args...> & vals) {
+	values_printer<0, (len<VALUES<T, args...>>() > 0), T, args...>::f(s, vals);
+};
+
+template<class T, T... args> std::ostream & operator<<(std::ostream & s, const VALUES<T, args...> & vals) {
+	s << "VALUES(";
+	print_values(s, vals);
+	return s << ')';
+};
+
 
 
 template<int... args> using ints_t = std::tuple< VALUE<uint, args < 0 ? dyn : sta, args < 0 ? 0 : args>... >;
@@ -225,13 +246,16 @@ template<class... Ts> std::ostream & operator<<(std::ostream & s, const std::tup
 }
 
 template<class T> struct POSITIVE : TYPE<bool> {
-	template<T x> struct pred : STATIC<bool, (x >= 0)> {};
+	template<T x> using pred = STATIC<bool, (x >= 0)>;
 };
 template<class T> struct NEGATIVE : TYPE<bool> {
-	template<T x> class pred : public STATIC<bool, (x < 0)> {};
+	template<T x> using pred = STATIC<bool, (x < 0)>;
 };
 template<class T> struct SUM {
 	template<T a, T b> using bin = STATIC<T, a+b>;
+};
+template<class T> struct DEC : TYPE<T> {
+	template<T x> using pred = STATIC<T, x-1>;
 };
 
 template<int... args> struct ints {
@@ -239,19 +263,26 @@ template<int... args> struct ints {
 	static const uint n = len<ARGS>();
 	static const uint n_static = count_v<ARGS, POSITIVE>(), n_dynamic = n - n_static;
 	using DYN = map_vv<ARGS, NEGATIVE>;
-	using INDEX = cumul<cast_v<DYN, int>, SUM>;
+	using INDEX = map_vv< cumul<cast_v<DYN, int>, SUM>, DEC>;
 	uint data[n_dynamic];
 	
 	template<int i> int read() const {
 		return at_v<DYN,i>() ? data[at_v<INDEX,i>()] : at_v<ARGS,i>();
 	}
+	template<int i> uint & write() {
+		if(at_v<DYN,i>()) return data[at_v<INDEX,i>()];
+		else throw "bad";
+	}
+	
+	ints() : data() {}
 };
 
 template<int i, bool ok, int... args> struct ints_printer {
 	static void f(std::ostream & s, const ints<args...> & vals) {
 		if(i) s << ", ";
+		if(!at_v<typename ints<args...>::DYN,i>()) s << '$';
 		s << vals.template read<i>();
-		ints_printer<i+1, i+1==ints<args...>::n, args...>::f(s, vals);
+		ints_printer<i+1, (i < ints<args...>::n-1), args...>::f(s, vals);
 	}
 };
 template<int i, int... args> struct ints_printer<i, false, args...> {
@@ -259,7 +290,7 @@ template<int i, int... args> struct ints_printer<i, false, args...> {
 };
 
 template<int... args> inline void print_ints(std::ostream & s, const ints<args...> & vals) {
-	ints_printer<0, bool(ints<args...>::n), args...>::f(s, vals);
+	ints_printer<0, (ints<args...>::n > 0), args...>::f(s, vals);
 };
 
 template<int... args> std::ostream & operator<<(std::ostream & s, const ints<args...> & vals) {
@@ -270,13 +301,19 @@ template<int... args> std::ostream & operator<<(std::ostream & s, const ints<arg
 
 
 int main() {
-	ints_t<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> vt;
-	std::get<3>(vt) = 3;
-	cout << sizeof(vt) << endl;
-	cout << vt << endl;
+	{
+		ints_t<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> v;
+		std::get<3>(v) = 3;
+		cout << sizeof(v) << endl;
+		cout << v << endl;
+	}
 	
-	ints<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> v;
-	cout << sizeof(v) << endl;
+	using T = ints<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>;
+	T v;
+	v.write<3>() = 3;
+	cout << "sizeof = " << sizeof(v) << " | n = " << v.n << " | n_static = " << v.n_static << endl;
+	/*cout << T::DYN() << endl;
+	cout << T::INDEX() << endl;*/
 	cout << v << endl;
 	return 0;
 }
