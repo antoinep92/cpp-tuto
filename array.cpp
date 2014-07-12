@@ -1,6 +1,14 @@
 #include <iostream>
 using std::cout; using std::cerr; using std::endl;
+#include <string>
+using std::string;
+#include <sstream>
+using std::stringstream;
 #include <tuple>
+using std::tuple;
+#include <exception>
+using std::exception;
+#include <functional>
 
 /*	conventions
 
@@ -23,6 +31,51 @@ using std::cout; using std::cerr; using std::endl;
 			struct EMPTY {}
 				EMPTY is used as a tag, to represent an empty set. The empty set is not even readable, only a convention => uppercase
 */
+
+struct SourceContext {
+	string file;
+	int line;
+	std::string function;
+	operator string () const {
+		stringstream ss;
+		ss << file << ':' << line;
+		if(!function.empty()) ss << " in " << function;
+		return ss.str();
+	}
+};
+
+struct EUnitFail : exception {
+	string msg;
+	EUnitFail(const SourceContext & context, const char* desc) {
+		stringstream ss;
+		ss << "Unit test failed\n" << string(context) << '\n' << desc;
+		msg = ss.str();
+	}
+	const char* what() const noexcept {
+		return msg.c_str();
+	}
+};
+
+template<bool b> struct t_sta;
+template<> struct t_sta<true> {};
+
+#define HERE SourceContext{__FILE__, __LINE__, __FUNCTION__}
+
+struct t_dyn {
+	SourceContext context;
+	t_dyn(const SourceContext & context, bool b) : context(context) {
+		if(!b) throw EUnitFail(context, "expression is false");
+	}
+	t_dyn(const SourceContext & context, const std::function<void()> & f) : context(context) {
+		try {
+			f();
+		} catch(std::exception & e) {
+			throw EUnitFail(context, e.what());
+		} catch(...) {
+			throw EUnitFail(context, "non-exception thrown");
+		}
+	}
+};
 
 using uint = unsigned int;
 
@@ -55,6 +108,7 @@ template<class T, T V> struct VALUE<T, dyn, V> : TYPE<T>, VALUE_KIND<dyn> {
 	operator const T & () const { return value; }
 	operator T & () { return value; }
 	template<class U> T & operator=(const U & v) { return value = v; }
+	VALUE(T v = T()) : value(v) {}
 };
 
 template<class T, T V> struct VALUE<T, ref, V> : TYPE<T>, VALUE_KIND<ref> {
@@ -66,6 +120,11 @@ template<class T, T V> using STATIC = VALUE<T, sta, V>;
 template<class T> using DYNAMIC = VALUE<T, dyn>; 
 template<class T> using REF = VALUE<T, ref>;
 
+namespace test_value {
+	static_assert(STATIC<int,3>::value == 3, "value");
+	static t_dyn u2(HERE, DYNAMIC<int>(5).value == 5);
+}
+
 using YES = void*;
 using NO = bool;
 
@@ -75,6 +134,18 @@ using TRUE = STATIC<bool, true>;
 using FALSE = STATIC<bool, false>;
 template<class A, class B> using ADD = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
 template<class X> using INC = STATIC<typename X::type, 1 + X::value>;
+
+template<class A, class B> struct SAME : FALSE {};
+template<class T> struct SAME<T,T> : TRUE {};
+template<class A, class B> constexpr bool same() { return SAME<A,B>::value; }
+
+namespace test_same {
+	static_assert(same<bool, bool>(), "same");
+	static_assert(same<TYPE<int>::type, int>(), "same");
+	
+}
+
+
 
 struct NIL { using nil_tag = void; };
 
