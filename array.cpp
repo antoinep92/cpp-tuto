@@ -91,7 +91,7 @@ template<class... Ts> using common = typename COMMON<Ts...>::type;
 enum ValueKind { sta, dyn, ref };
 
 template<ValueKind K> struct VALUE_KIND {
-	using value_flag = void;
+	using value_tag = void;
 	static const ValueKind kind = K;
 	static const bool isStatic = (K == sta);
 	static const bool isDynamic = !isStatic;
@@ -127,25 +127,30 @@ namespace test_value {
 
 using YES = void*;
 using NO = bool;
+namespace test_yesno {
+	static_assert(sizeof(YES) != sizeof(NO), "yesno");
+}
 
 template<class T> using ZERO = STATIC<T, 0>;
 template<class T> using ONE = STATIC<T, 1>;
 using TRUE = STATIC<bool, true>;
 using FALSE = STATIC<bool, false>;
-template<class A, class B> using ADD = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
-template<class X> using INC = STATIC<typename X::type, 1 + X::value>;
+
+template<class A, class B> using add = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
+template<class X> using inc = STATIC<typename X::type, 1 + X::value>;
+namespace test_valop {
+	static_assert(inc<ZERO<int>>::value == 1, "valop");
+	static_assert(add<STATIC<int, 3>, STATIC<int, 10>>::value == 13, "valop");
+}
 
 template<class A, class B> struct SAME : FALSE {};
 template<class T> struct SAME<T,T> : TRUE {};
 template<class A, class B> constexpr bool same() { return SAME<A,B>::value; }
-
 namespace test_same {
 	static_assert(same<bool, bool>(), "same");
 	static_assert(same<TYPE<int>::type, int>(), "same");
 	
 }
-
-
 
 struct NIL { using nil_tag = void; };
 
@@ -162,49 +167,84 @@ TYPEDEF_TEST(isNil, nil_tag)
 TYPEDEF_TEST(isValue, value_tag)
 
 template<class... Ts> struct TYPES { using types = TYPES<Ts...>; };
+template<class T, T... args> struct VALUES : TYPE<T> { using values = VALUES<T, args...>; };
 TYPEDEF_TEST(isTypes, types)
+TYPEDEF_TEST(isValues, values)
+template<class T> constexpr bool isList() { return isValues<T>() || isTypes<T>(); }
+
+namespace test_is {
+	static_assert(isValue<TRUE>(), "is");
+	static_assert(isTypes<TYPES<void, bool>>(), "is");
+	static_assert(isValues<VALUES<int, 1,2,3>>(), "is");
+	static_assert(!isList<FALSE>(), "is");
+	static_assert(!isValue<NIL>(), "is");
+}
 
 template<class H, class T> struct CONS_T;
 template<class H, class... Ts> struct CONS_T<H, TYPES<Ts...>> : TYPES<H, Ts...> {};
 template<class H, class T> using cons_t = typename CONS_T<H, T>::types;
 
-template<class A, class B> struct CAT_T;
-template<class... As, class... Bs> struct CAT_T<TYPES<As...>, TYPES<Bs...>> : TYPES<As..., Bs...> {};
-template<class A, class B> using cat_t = typename CAT_T<A, B>::types;
-
-template<class T, T... args> struct VALUES : TYPE<T> { using values = VALUES<T, args...>; };
-TYPEDEF_TEST(isValues, values)
-
 template<class X, X H, class T> struct CONS_V : CONS_V<X, H, typename T::values> {};
 template<class X, X H, X... Vs> struct CONS_V<X, H, VALUES<X, Vs...>> : VALUES<X, H, Vs...> {};
 template<class X, X H, class T> using cons_v = typename CONS_V<X, H, T>::values;
 
+namespace test_cons {
+	static_assert(same<cons_t<int, TYPES<float>>, TYPES<int, float>>(), "cons");
+	static_assert(same<cons_v<int, 3, VALUES<int>>, VALUES<int, 3>>(), "cons");
+}
+
+template<class A, class B> struct CAT_T;
+template<class... As, class... Bs> struct CAT_T<TYPES<As...>, TYPES<Bs...>> : TYPES<As..., Bs...> {};
+template<class A, class B> using cat_t = typename CAT_T<A, B>::types;
+
 template<class A, class B> struct CAT_V;
-template<class X, X... As, X... Bs> struct CAT_V<VALUES<X, As...>, VALUES<X, Bs...>> {};
+template<class X, X... As, X... Bs> struct CAT_V<VALUES<X, As...>, VALUES<X, Bs...>> : VALUES<X, As..., Bs...> {};
 template<class A, class B> using cat_v = typename CAT_V<A, B>::values;
 
-template<class T> constexpr bool isList() { return isValues<T>() || isTypes<T>(); }
+namespace test_cat {
+	static_assert(same<cat_t<TYPES<void, int>, TYPES<float, double>>, TYPES<void, int, float, double>>(), "cat");
+	static_assert(same<cat_v<VALUES<int, 1,2>, VALUES<int, 3,4>>, VALUES<int, 1,2,3,4>>(), "cat");
+}
 
 template<class L, int I> struct AT;
 template<class F, class... Ns> struct AT<TYPES<F, Ns...>, 0> : TYPE<F> {};
-template<int I, class F, class... Ns> struct AT<TYPES<F, Ns...>, I> : AT<TYPES<Ns...>, I-1> {};
+template<int I, class F, class... Ns> struct AT<TYPES<F, Ns...>, I> : AT<TYPES<Ns...>, I-1> { static_assert(I >= 0, "out of bounds"); };
 template<class T, T F, T... Ns> struct AT<VALUES<T, F, Ns...>, 0> : STATIC<T, F> {};
-template<int I, class T, T F, T... Ns> struct AT<VALUES<T, F, Ns...>, I> : AT<VALUES<T,Ns...>, I-1> {};
+template<int I, class T, T F, T... Ns> struct AT<VALUES<T, F, Ns...>, I> : AT<VALUES<T,Ns...>, I-1> { static_assert(I >= 0, "out of bounds"); };
 template<class T, int i> using at_t = typename AT<T, i>::type;
 template<class T, int i> constexpr typename T::type at_v() { return AT<T,i>::value; }
 
+namespace test_at {
+	static_assert(same<at_t<TYPES<void,float>,0>,void>(), "at");
+	static_assert(same<at_t<TYPES<void,float>,1>,float>(), "at");
+	static_assert(at_v<VALUES<int,1,3,5>,0>() == 1, "at");
+	static_assert(at_v<VALUES<int,1,3,5>,1>() == 3, "at");
+	static_assert(at_v<VALUES<int,1,3,5>,2>() == 5, "at");
+}
 
 //#define MAYBE_TYPE(P_, T_) typename std::enable_if<P_<T>(), T>::type
 template<bool C, class T, class F> struct COND : TYPE<T> {};
 template<class T, class F> struct COND<false, T, F> : TYPE<F> {};
 template<bool C, class T, class F> using cond = typename COND<C, T, F>::type;
 
+namespace test_cond {
+	static_assert(cond<true,TRUE,FALSE>::value, "cond");
+	static_assert(!cond<false,TRUE,FALSE>::value, "cond");
+}
+
 template<class T> struct LEN;
 template<> struct LEN<TYPES<>> : ZERO<uint> {};
 template<class T> struct LEN<VALUES<T>> : ZERO<uint> {};
-template<class F, class... Ns> struct LEN<TYPES<F, Ns...>> : INC<LEN<TYPES<Ns...>>> {};
-template<class T, T F, T... Ns> struct LEN<VALUES<T, F, Ns...>> : INC<LEN<VALUES<T, Ns...>>> {};
+template<class F, class... Ns> struct LEN<TYPES<F, Ns...>> : inc<LEN<TYPES<Ns...>>> {};
+template<class T, T F, T... Ns> struct LEN<VALUES<T, F, Ns...>> : inc<LEN<VALUES<T, Ns...>>> {};
 template<class T> constexpr typename std::enable_if<isList<T>(), uint>::type len() { return LEN<T>::value; }
+
+namespace test_len {
+	static_assert(len<TYPES<>>() == 0, "len");
+	static_assert(len<TYPES<int, double>>() == 2, "len");
+	static_assert(len<VALUES<bool>>() == 0, "len");
+	static_assert(len<VALUES<char, 't','e','s','t'>>() == 4, "len");
+}
 
 template<class T, template<class> class P> struct COUNT_T;
 template<template<class> class P> struct COUNT_T<TYPES<>, P> : ZERO<uint> {};
