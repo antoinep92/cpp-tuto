@@ -244,19 +244,19 @@ namespace test_value_print {
 
 
 
-#define MAKE_OP(_NAME_, _OP_, _OUT_) \
-	template<class In> struct _NAME_ : TYPE<_OUT_> { \
+#define MAKE_OP(_NAME_, _OP_, _OUT_, _INIT_) \
+	template<class In> struct _NAME_ : STATIC<_OUT_, _INIT_> { \
 		template<In a, In b> using bin = STATIC<_OUT_, (a _OP_ b)>; \
 	}
-MAKE_OP(ADD, +, In);
-MAKE_OP(MUL, *, In);
+MAKE_OP(ADD, +, In, 0);
+MAKE_OP(MUL, *, In, 1);
 
-MAKE_OP(EQUALS, ==, bool);
-MAKE_OP(NEQ, !=, bool);
-MAKE_OP(LESS, <, bool);
-MAKE_OP(GREATER, >, bool);
-MAKE_OP(LEQ, <=, bool);
-MAKE_OP(GEQ, >=, bool);
+MAKE_OP(EQUALS, ==, bool, false);
+MAKE_OP(NEQ, !=, bool, false);
+MAKE_OP(LESS, <, bool, false);
+MAKE_OP(GREATER, >, bool, false);
+MAKE_OP(LEQ, <=, bool, false);
+MAKE_OP(GEQ, >=, bool, false);
 
 namespace test_bin {
 	static_assert(ADD<int>::bin<3,2>::value == 5, "bin");
@@ -480,21 +480,26 @@ template<template<class,class> class B, class S> struct REDUCE_TT<TYPES<>, B, S>
 template<template<class,class> class B, class S, class F, class... Ns> struct REDUCE_TT<TYPES<F, Ns...>, B, S> : B<F, typename REDUCE_TT<TYPES<Ns...>, B, S>::type> {};
 template<class T, template<class,class> class B, class S = void> using reduce_tt = typename REDUCE_TT<T, B, S>::type;
 
-template<class T, template<class> class B, typename T::type S = typename T::type()> struct REDUCE_VV;
+template<class T, template<class> class B, typename T::type S = B<typename T::type>::value> struct REDUCE_VV;
 template<class T, template<class> class B, T S> struct REDUCE_VV<VALUES<T>, B, S> : STATIC<T,S> {};
 template<class T, template<class> class B, T S, T F, T... Ns> struct REDUCE_VV<VALUES<T, F, Ns...>, B, S> : B<T>::template bin<F, REDUCE_VV<VALUES<T, Ns...>, B, S>::value> {};
-template<class T, template<class> class B, typename T::type S = typename T::type()> constexpr typename T::type reduce_vv() { return REDUCE_VV<T, B, S>::value; }
+template<class T, template<class> class B, typename T::type S = B<typename T::type>::value> constexpr typename T::type reduce_vv() { return REDUCE_VV<T, B, S>::value; }
 
 namespace test_reduce {
 	static_assert(same<reduce_tt<TYPES<int, char, float, double>, COMMON2, bool>, double>(), "reduce");
 	static_assert(reduce_vv<VALUES<int, 1,2,3>, ADD, 10>() == 16, "reduce");
-	static_assert(reduce_vv<VALUES<int, 3,4,10>, MUL, 1>() == 120, "reduce");
+	static_assert(reduce_vv<VALUES<int, 3,4,10>, MUL>() == 120, "reduce");
 }
 
-template<class T, template<class> class B, typename T::type S = typename T::type()> struct CUMUL;
+template<class T, template<class> class B, typename T::type S = B<typename T::type>::value> struct CUMUL;
 template<class T, template<class> class B, T S> struct CUMUL<VALUES<T>, B, S> : VALUES<T> {};
 template<class T, template<class> class B, T S, T F, T... Ns> struct CUMUL<VALUES<T, F, Ns...>, B, S> : CONS_V<T, B<T>::template bin<F,S>::value, CUMUL<VALUES<T, Ns...>, B, B<T>::template bin<F,S>::value>> {};
-template<class T, template<class> class B, typename T::type S =typename T::type()> using cumul = typename CUMUL<T, B, S>::values;
+template<class T, template<class> class B, typename T::type S = B<typename T::type>::value> using cumul = typename CUMUL<T, B, S>::values;
+
+namespace test_cumul {
+	static_assert(same< cumul<VALUES<int, 1,2,3,4,5>, ADD>, VALUES<int, 1,3,6,10,15> >(), "cumul");
+	static_assert(same< cumul<VALUES<int, 1,2,3,4,5>, MUL>, VALUES<int, 1,2,6,24,120> >(), "cumul");
+}
 
 template<class Vals, class Target> struct CAST_V;
 template<class T, class Target, T... Vals> struct CAST_V<VALUES<T, Vals...>, Target> : VALUES<Target, Target(Vals)...> {};
