@@ -87,10 +87,6 @@ template<class T, ValueKind SD, T V> std::ostream & operator<<(std::ostream & s,
 	return s << val.value;
 }
 
-namespace test_value_print {
-	
-}
-
 template<class T> using ZERO = STATIC<T, T(0)>;
 template<class T> using ONE = STATIC<T, T(1)>;
 template<class T> using MONE = STATIC<T, T(-1)>;
@@ -111,14 +107,22 @@ namespace test_same {
 	static_assert(same<TYPE<int>::type, int>(), "same");
 }
 
+template<class... Ts> using common = typename std::common_type<Ts...>::type;
+template<class A, class B> using COMMON2 = std::common_type<A,B>;
 template<class A, class B> using common2 = typename std::common_type<A, B>::type;
-template<class... Ts> struct COMMON;
-template<class T> struct COMMON<T> : TYPE<T> {};
-template<class F, class... Ns> struct COMMON<F, Ns...> : std::common_type<F, typename COMMON<Ns...>::type> {};
-template<class... Ts> using common = typename COMMON<Ts...>::type;
 namespace test_common {
-	static_assert(same<common<int,char>, int>, "common");
+	static_assert(same<common<int,char,short>, int>, "common");
 }
+
+
+template<class A, class B> using add = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
+template<class X> using inc = STATIC<typename X::type, 1 + X::value>;
+
+namespace test_valop {
+	static_assert(inc<ZERO<int>>::value == 1, "valop");
+	static_assert(add<STATIC<int, 3>, STATIC<int, 10>>::value == 13, "valop");
+}
+
 
 
 template<class T, class... Args> struct CALLABLE {
@@ -227,15 +231,17 @@ namespace test_value {
 	static t_dyn u2(HERE, DYNAMIC<int>(5).value == 5);
 	static t_dyn u3(HERE, []() { DYNAMIC<char> v; v = 'a'; return v == 'a'; });
 }
-
-
-template<class A, class B> using add = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
-template<class X> using inc = STATIC<typename X::type, 1 + X::value>;
-
-namespace test_valop {
-	static_assert(inc<ZERO<int>>::value == 1, "valop");
-	static_assert(add<STATIC<int, 3>, STATIC<int, 10>>::value == 13, "valop");
+namespace test_value_print {
+	t_dyn u1(HERE, []() {
+		STATIC<int,5> s;
+		DYNAMIC<int> d(3);
+		stringstream ss;
+		ss << s << ' ' << d;
+		return ss.str() == "$5 3";
+	});
 }
+
+
 
 
 #define MAKE_OP(_NAME_, _OP_, _OUT_) \
@@ -475,9 +481,15 @@ template<template<class,class> class B, class S, class F, class... Ns> struct RE
 template<class T, template<class,class> class B, class S = void> using reduce_tt = typename REDUCE_TT<T, B, S>::type;
 
 template<class T, template<class> class B, typename T::type S = typename T::type()> struct REDUCE_VV;
-template<class T, template<class> class B, T S> struct REDUCE_VV<VALUES<T>, B, S> : VALUE<T,S> {};
+template<class T, template<class> class B, T S> struct REDUCE_VV<VALUES<T>, B, S> : STATIC<T,S> {};
 template<class T, template<class> class B, T S, T F, T... Ns> struct REDUCE_VV<VALUES<T, F, Ns...>, B, S> : B<T>::template bin<F, REDUCE_VV<VALUES<T, Ns...>, B, S>::value> {};
 template<class T, template<class> class B, typename T::type S = typename T::type()> constexpr typename T::type reduce_vv() { return REDUCE_VV<T, B, S>::value; }
+
+namespace test_reduce {
+	static_assert(same<reduce_tt<TYPES<int, char, float, double>, COMMON2, bool>, double>(), "reduce");
+	static_assert(reduce_vv<VALUES<int, 1,2,3>, ADD, 10>() == 16, "reduce");
+	static_assert(reduce_vv<VALUES<int, 3,4,10>, MUL, 1>() == 120, "reduce");
+}
 
 template<class T, template<class> class B, typename T::type S = typename T::type()> struct CUMUL;
 template<class T, template<class> class B, T S> struct CUMUL<VALUES<T>, B, S> : VALUES<T> {};
