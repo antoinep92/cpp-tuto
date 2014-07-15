@@ -9,6 +9,7 @@ using std::tuple;
 #include <exception>
 using std::exception;
 #include <functional>
+using std::enable_if; using std::declval;
 
 /*	conventions
 
@@ -32,59 +33,18 @@ using std::exception;
 				EMPTY is used as a tag, to represent an empty set. The empty set is not even readable, only a convention => uppercase
 */
 
-struct SourceContext {
-	string file;
-	int line;
-	operator string () const {
-		stringstream ss;
-		ss << file << ':' << line;
-		return ss.str();
-	}
-};
-
-struct EUnitFail : exception {
-	string msg;
-	EUnitFail(const SourceContext & context, const char* desc) {
-		stringstream ss;
-		ss << "Unit test failed\n" << string(context) << '\n' << desc;
-		msg = ss.str();
-	}
-	const char* what() const noexcept {
-		return msg.c_str();
-	}
-};
-
-template<bool b> struct t_sta;
-template<> struct t_sta<true> {};
-
-#define HERE SourceContext{__FILE__, __LINE__}
-
-struct t_dyn {
-	SourceContext context;
-	t_dyn(const SourceContext & context, bool b) : context(context) {
-		if(!b) throw EUnitFail(context, "expression is false");
-	}
-	t_dyn(const SourceContext & context, const std::function<void()> & f) : context(context) {
-		try {
-			f();
-		} catch(std::exception & e) {
-			throw EUnitFail(context, e.what());
-		} catch(...) {
-			throw EUnitFail(context, "non-exception thrown");
-		}
-	}
-};
+using YES = void*;
+using NO = bool;
+namespace test_yesno {
+	static_assert(sizeof(YES) != sizeof(NO), "yesno");
+}
 
 using uint = unsigned int;
 
+template<class T> using VOID = void;
+template<class A, class B> constexpr bool convertible() { return std::is_convertible<A,B>::value; }
+
 template<class T> struct TYPE { using type = T; };
-
-template<class A, class B> using common2 = typename std::common_type<A, B>::type;
-template<class... Ts> struct COMMON;
-template<class T> struct COMMON<T> : TYPE<T> {};
-template<class F, class... Ns> struct COMMON<F, Ns...> : std::common_type<F, typename COMMON<Ns...>::type> {};
-template<class... Ts> using common = typename COMMON<Ts...>::type;
-
 
 enum ValueKind { sta, dyn, ref };
 
@@ -120,19 +80,150 @@ template<class T> using REF = VALUE<T, ref>;
 
 namespace test_value {
 	static_assert(STATIC<int,3>::value == 3, "value");
-	static t_dyn u2(HERE, DYNAMIC<int>(5).value == 5);
 }
 
-using YES = void*;
-using NO = bool;
-namespace test_yesno {
-	static_assert(sizeof(YES) != sizeof(NO), "yesno");
+template<class T, ValueKind SD, T V> std::ostream & operator<<(std::ostream & s, const VALUE<T, SD, V> & val) {
+	if(SD == sta) s << '$';
+	return s << val.value;
 }
 
-template<class T> using ZERO = STATIC<T, 0>;
-template<class T> using ONE = STATIC<T, 1>;
+namespace test_value_print {
+	
+}
+
+template<class T> using ZERO = STATIC<T, T(0)>;
+template<class T> using ONE = STATIC<T, T(1)>;
+template<class T> using MONE = STATIC<T, T(-1)>;
 using TRUE = STATIC<bool, true>;
 using FALSE = STATIC<bool, false>;
+
+
+template<class A, class B> struct SAME : FALSE {};
+template<class T> struct SAME<T,T> : TRUE {};
+template<class A, class B> constexpr bool same() { return SAME<A,B>::value; }
+
+namespace test_same {
+	static_assert(same<bool, bool>(), "same");
+	static_assert(same<TYPE<int>::type, int>(), "same");
+}
+
+template<class A, class B> using common2 = typename std::common_type<A, B>::type;
+template<class... Ts> struct COMMON;
+template<class T> struct COMMON<T> : TYPE<T> {};
+template<class F, class... Ns> struct COMMON<F, Ns...> : std::common_type<F, typename COMMON<Ns...>::type> {};
+template<class... Ts> using common = typename COMMON<Ts...>::type;
+namespace test_common {
+	static_assert(same<common<int,char>, int>, "common");
+}
+
+
+template<class T, class... Args> struct CALLABLE {
+	template<class U> static YES f(decltype(declval<U>()(declval<Args>()...))*);
+	template<class U> static NO f(...);
+	static const bool value = (sizeof(f<T>(0)) == sizeof(YES));
+};
+template<class T, class... Args> constexpr bool callable() { return CALLABLE<T, Args...>::value; }
+
+template<bool ok, class T, class R, class... Args> struct CALL_CONVERTIBLE_ : FALSE {};
+template<class T, class R, class... Args> struct CALL_CONVERTIBLE_<true, T, R, Args...> : std::is_convertible<decltype(declval<T>()(declval<Args>()...)), R> {};
+template<class T, class... Args> struct CALL_CONVERTIBLE_<true, T, void, Args...> : TRUE {};
+template<class T, class R, class... Args> struct CALL_CONVERTIBLE : CALL_CONVERTIBLE_<callable<T, Args...>(), T, R, Args...> {};
+
+template<class Sig, class T> struct CALL_CONVERTIBLE_S;
+template<class T, class R, class... Args> struct CALL_CONVERTIBLE_S<R(Args...), T> : CALL_CONVERTIBLE<T, R, Args...> {};
+template<class Sig, class T> constexpr bool call_convertible() { return CALL_CONVERTIBLE_S<Sig,T>::value; }
+template<class Sig, class T> constexpr bool call_convertible(const T &) { return CALL_CONVERTIBLE_S<Sig,T>::value; }
+
+namespace test_callable {
+	void void_void();
+	using vv = decltype(void_void);
+	int int_int(int);
+	using ii = decltype(int_int);
+	static_assert(callable<vv>(), "callable");
+	static_assert(!callable<vv, bool, bool>(), "callable");
+	static_assert(callable<ii, int>(), "callable");
+	static_assert(callable<ii, float>(), "callable");
+	static_assert(!callable<ii>(), "callable");
+	static_assert(!callable<ii, int,int>(), "callable");
+	static_assert(!callable<int>(), "callable");
+	static_assert(!callable<bool>(), "callable");
+	static_assert(call_convertible<void()>(void_void), "callable");
+	static_assert(!call_convertible<int()>(void_void), "callable");
+	static_assert(!call_convertible<int()>(int_int), "callable");
+	static_assert(call_convertible<int(int)>(int_int), "callable");
+}
+
+
+struct SourceContext {
+	string file;
+	int line;
+	operator string () const {
+		stringstream ss;
+		ss << file << ':' << line;
+		return ss.str();
+	}
+};
+
+struct ELocalizedException : exception {
+	const string msg;
+	ELocalizedException() : msg() {}
+	template<class... Args> ELocalizedException(const SourceContext & context, const Args & ... args) : msg(format(context, args...)) {}
+	ELocalizedException(const std::string & desc) : msg(desc) {}
+	template<class S> static void print_lines(S &) {}
+	template<class S, class F, class... Args> static void print_lines(S & s, const F & f, const Args & ... args) {
+		s << f << '\n';
+		print_lines(s, args...);
+	}
+	template<class... Args> static std::string format(const SourceContext & context, const Args & ... args) {
+		stringstream ss;
+		ss << "Exception at " << string(context) << '\n';
+		print_lines(ss, args...);
+		return ss.str();
+	}
+	const char* what() const noexcept { return msg.c_str(); }
+};
+
+struct EUnitFail : ELocalizedException {
+	template<class... Args> EUnitFail(const SourceContext & context, const Args & ... args) : ELocalizedException(context, "Unit test failed", args...) {}
+};
+
+template<bool b> struct t_sta;
+template<> struct t_sta<true> {};
+
+#define HERE SourceContext{__FILE__, __LINE__}
+
+struct t_dyn {
+	template<class B> static typename enable_if<!callable<B>() && convertible<B,bool>()>::type test(const SourceContext & context, const B & b) {
+		if(!b) throw EUnitFail(context, "expression is false");
+	}
+	template<class F> static typename enable_if<call_convertible<void(), F>() && !call_convertible<bool(), F>()>::type test(const SourceContext & context, const F & f) {
+		try {
+			f();
+		} catch(std::exception & e) {
+			throw EUnitFail(context, e.what());
+		} catch(...) {
+			throw EUnitFail(context, "non-exception thrown");
+		}
+	}
+	template<class F> static typename enable_if<call_convertible<bool(), F>()>::type test(const SourceContext & context, const F & f) {
+		try {
+			if(!f()) throw ELocalizedException(HERE, "unit test's return value evalutes to false");
+		} catch(std::exception & e) {
+			throw EUnitFail(context, e.what());
+		} catch(...) {
+			throw EUnitFail(context, "non-exception thrown");
+		}
+	}
+	template<class T> t_dyn(const SourceContext & context, const T & expr) {
+		test(context, expr);
+	}
+};
+
+namespace test_value {
+	static t_dyn u2(HERE, DYNAMIC<int>(5).value == 5);
+	static t_dyn u3(HERE, []() { DYNAMIC<char> v; v = 'a'; return v == 'a'; });	
+}
+
 
 template<class A, class B> using add = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
 template<class X> using inc = STATIC<typename X::type, 1 + X::value>;
@@ -142,37 +233,25 @@ namespace test_valop {
 	static_assert(add<STATIC<int, 3>, STATIC<int, 10>>::value == 13, "valop");
 }
 
-template<class T> struct POSITIVE : TYPE<bool> {
-	template<T x> using f = STATIC<bool, (x >= 0)>;
-};
-template<class T> struct NEGATIVE : TYPE<bool> {
-	template<T x> using f = STATIC<bool, (x < 0)>;
-};
-template<class T> struct INC : TYPE<T> {
-	template<T x> using f = STATIC<T, x+1>;
-};
-template<class T> struct DEC : TYPE<T> {
-	template<T x> using f = STATIC<T, x-1>;
-};
 
-namespace test_func {
-	static_assert(DEC<int>::f<1>::value == 0, "func");
-	static_assert(INC<int>::f<0>::value == 1, "func");
-	static_assert(POSITIVE<int>::f<3>::value, "pred");
-	static_assert(!POSITIVE<int>::f<-2>::value, "pred");
-	static_assert(NEGATIVE<int>::f<-1>::value, "pred");
-}
+#define MAKE_OP(_NAME_, _OP_, _OUT_) \
+	template<class In> struct _NAME_ : TYPE<_OUT_> { \
+		template<In a, In b> using bin = STATIC<_OUT_, (a _OP_ b)>; \
+	}
+MAKE_OP(ADD, +, In);
+MAKE_OP(MUL, *, In);
 
-template<class T> struct ADD {
-	template<T a, T b> using bin = STATIC<T, a+b>;
-};
-template<class T> struct MUL {
-	template<T a, T b> using bin = STATIC<T, a*b>;
-};
+MAKE_OP(EQUALS, ==, bool);
+MAKE_OP(NEQ, !=, bool);
+MAKE_OP(LESS, <, bool);
+MAKE_OP(GREATER, >, bool);
+MAKE_OP(LEQ, <=, bool);
+MAKE_OP(GEQ, >=, bool);
 
 namespace test_bin {
 	static_assert(ADD<int>::bin<3,2>::value == 5, "bin");
 	static_assert(MUL<int>::bin<3,2>::value == 6, "bin");
+	static_assert(EQUALS<char>::bin<'a', 'a'>::value, "bin");
 }
 
 template<template<class> class Bin, template<class> class Val> struct BIND_P {
@@ -192,16 +271,30 @@ namespace test_bind {
 	static_assert(BIND_V<MUL, int, 2>::F<int>::f<3>::value == 6, "bind");
 }
 
+template<class T> struct IDENTITY : TYPE<T> {
+	template<T x> using f = STATIC<T, x>;
+};
+template<class T> struct NOT : TYPE<bool> {
+	template<T x> using f = STATIC<T, !x>;
+};
+template<class T> using POSITIVE = BIND_P<GREATER, ZERO>::F<T>;
+template<class T> using NEGATIVE = BIND_P<LESS, ZERO>::F<T>;
+template<class T> using POSNULL = BIND_P<GEQ, ZERO>::F<T>;
+template<class T> using NEGNULL = BIND_P<LEQ, ZERO>::F<T>;
+template<class T> using ISZERO = BIND_P<EQUALS, ZERO>::F<T>;
+template<class T> using INC = BIND_P<ADD, ONE>::F<T>;
+template<class T> using DEC = BIND_P<ADD, MONE>::F<T>;
 
-template<class A, class B> struct SAME : FALSE {};
-template<class T> struct SAME<T,T> : TRUE {};
-template<class A, class B> constexpr bool same() { return SAME<A,B>::value; }
-
-namespace test_same {
-	static_assert(same<bool, bool>(), "same");
-	static_assert(same<TYPE<int>::type, int>(), "same");
-	
+namespace test_func {
+	static_assert(DEC<int>::f<1>::value == 0, "func");
+	static_assert(INC<int>::f<0>::value == 1, "func");
+	static_assert(POSITIVE<int>::f<3>::value, "pred");
+	static_assert(!POSITIVE<int>::f<-2>::value, "pred");
+	static_assert(NEGATIVE<int>::f<-1>::value, "pred");
 }
+
+
+
 
 struct NIL { using nil_tag = void; };
 
@@ -361,10 +454,6 @@ template<class T, class Target, T... Vals> struct CAST_V<VALUES<T, Vals...>, Tar
 template<class Vals, class Target> using cast_v = typename CAST_V<Vals, Target>::values;
 
 
-template<class T, ValueKind SD, T V> std::ostream & operator<<(std::ostream & s, const VALUE<T, SD, V> & val) {
-	if(SD == sta) s << '$';
-	return s << val.value;
-}
 
 template<int i, bool ok, class T, T... args> struct values_printer {
 	static void f(std::ostream & s, const VALUES<T, args...> & vals) {
@@ -410,8 +499,8 @@ template<class... Ts> std::ostream & operator<<(std::ostream & s, const std::tup
 template<int... args> struct ints {
 	using ARGS = VALUES<int, args...>;
 	static const uint n = len<ARGS>();
-	static const uint n_static = count_v<ARGS, POSITIVE>(), n_dynamic = n - n_static;
 	using DYN = map_vv<ARGS, NEGATIVE>;
+	static const uint n_static = count_v<DYN, NOT>(), n_dynamic = n - n_static;
 	using INDEX = map_vv< cumul<cast_v<DYN, int>, ADD>, DEC>;
 	uint data[n_dynamic];
 	
