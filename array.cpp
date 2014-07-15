@@ -97,6 +97,10 @@ template<class T> using MONE = STATIC<T, T(-1)>;
 using TRUE = STATIC<bool, true>;
 using FALSE = STATIC<bool, false>;
 
+template<class T> struct MAKE_VALUE {
+	template<T x> using f = STATIC<T,x>;
+};
+
 
 template<class A, class B> struct SAME : FALSE {};
 template<class T> struct SAME<T,T> : TRUE {};
@@ -221,7 +225,7 @@ struct t_dyn {
 
 namespace test_value {
 	static t_dyn u2(HERE, DYNAMIC<int>(5).value == 5);
-	static t_dyn u3(HERE, []() { DYNAMIC<char> v; v = 'a'; return v == 'a'; });	
+	static t_dyn u3(HERE, []() { DYNAMIC<char> v; v = 'a'; return v == 'a'; });
 }
 
 
@@ -277,6 +281,8 @@ template<class T> struct IDENTITY : TYPE<T> {
 template<class T> struct NOT : TYPE<bool> {
 	template<T x> using f = STATIC<T, !x>;
 };
+template<class T> struct SIZEOF : STATIC<size_t, sizeof(T)> {};
+template<> struct SIZEOF<void> : STATIC<size_t, 0> {};
 template<class T> using POSITIVE = BIND_P<GREATER, ZERO>::F<T>;
 template<class T> using NEGATIVE = BIND_P<LESS, ZERO>::F<T>;
 template<class T> using POSNULL = BIND_P<GEQ, ZERO>::F<T>;
@@ -288,11 +294,21 @@ template<class T> using DEC = BIND_P<ADD, MONE>::F<T>;
 namespace test_func {
 	static_assert(DEC<int>::f<1>::value == 0, "func");
 	static_assert(INC<int>::f<0>::value == 1, "func");
-	static_assert(POSITIVE<int>::f<3>::value, "pred");
-	static_assert(!POSITIVE<int>::f<-2>::value, "pred");
-	static_assert(NEGATIVE<int>::f<-1>::value, "pred");
+	static_assert(POSITIVE<int>::f<3>::value, "func");
+	static_assert(!POSITIVE<int>::f<-2>::value, "func");
+	static_assert(NEGATIVE<int>::f<-1>::value, "func");
+	static_assert(IDENTITY<char>::f<'a'>::value == 'a', "func");
 }
 
+template<class C> struct CONST {
+	template<class T> using TF = C;
+	template<class T> struct F : C {
+		template<T x> using f = C;
+	};
+	template<class T> struct B : C {
+		template<T a, T b> using bin = C;
+	};
+};
 
 
 
@@ -400,11 +416,18 @@ template<class T, template<class> class P> struct COUNT_V<VALUES<T>, P> : ZERO<u
 template<class T, template<class> class P, T F, T... Ns> struct COUNT_V<VALUES<T, F, Ns...>, P> : STATIC<uint, (P<T>::template f<F>::value ? 1:0) + COUNT_V<VALUES<T, Ns...>, P>::value> {};
 template<class T, template<class> class P> constexpr typename std::enable_if<isValues<T>(), uint>::type count_v() { return COUNT_V<T, P>::value; }
 
+namespace test_count {
+	static_assert(count_t<TYPES<int, char, bool, string, char*>, std::is_integral>() == 3, "count");
+	static_assert(count_t<TYPES<int, char, bool, string, char*>, CONST<TRUE>::TF>() == 5, "count");
+	static_assert(count_v<VALUES<char, 't','e','s','t'>, BIND_V<EQUALS,char,'t'>::F>() == 2, "count");
+	static_assert(count_v<VALUES<char, 't','e','s','t'>, CONST<TRUE>::F>() == 4, "count");
+}
+
 template<class T, template<class> class P> struct FILTER_T;
 template<template<class> class P> struct FILTER_T<TYPES<>, P> : TYPES<> {};
 template<template<class> class P, class F, class... Ns> struct FILTER_T<TYPES<F, Ns...>, P> : COND<
 	P<F>::value,
-	typename CONS_T< F, typename FILTER_T<TYPES<Ns...>, P>::types >::type,
+	cons_t< F, typename FILTER_T<TYPES<Ns...>, P>::types >,
 	typename FILTER_T<TYPES<Ns...>, P >::types
 >::type::types {};
 template<class T, template<class> class P> using filter_t = typename FILTER_T<T, P>::types;
@@ -413,10 +436,15 @@ template<class T, template<class> class P> struct FILTER_V;
 template<class T, template<class> class P> struct FILTER_V<VALUES<T>, P> : VALUES<T> {};
 template<class T, template<class> class P, T F, T... Vs> struct FILTER_V<VALUES<T, F, Vs...>, P> : COND<
 	P<T>::template f<F>::value,
-	typename CONS_V< T, F, typename FILTER_V<VALUES<T, Vs...>, P>::values >::type,
+	cons_v< T, F, typename FILTER_V<VALUES<T, Vs...>, P>::values >,
 	typename FILTER_V<VALUES<T, Vs...>, P>::values
 >::type::values {};
 template<class T, template<class> class P> using filter_v = typename FILTER_V<T, P>::values;
+
+namespace test_filter {
+	static_assert(same<filter_t<TYPES<int, string, char, void*, bool, char*>, std::is_integral>, TYPES<int, char, bool>>(), "filter");
+	static_assert(same<filter_v<VALUES<int, -2, 5, 3, -1, 5>, POSITIVE>, VALUES<int, 5,3,5>>(), "filter");
+}
 
 template<class T, template<class> class P> struct MAP_TT;
 template<template<class> class P, class... Ts> struct MAP_TT<TYPES<Ts...>, P> : TYPES< typename P<Ts>::type... > {};
@@ -427,12 +455,19 @@ template<template<class> class P, class... Ts> struct MAP_TV<TYPES<Ts...>, P> : 
 template<class T, template<class> class P> using map_tv = typename MAP_TV<T, P>::values;
 
 template<class T, template<class> class P> struct MAP_VT;
-template<class T, template<class> class P, T... Vs> struct MAP_VT<VALUES<T, Vs...>, P> : TYPES< typename P<T>::template f<Vs>::type... > {};
+template<class T, template<class> class P, T... Vs> struct MAP_VT<VALUES<T, Vs...>, P> : TYPES< typename P<T>::template f<Vs>... > {};
 template<class T, template<class> class P> using map_vt = typename MAP_VT<T, P>::types;
 
 template<class T, template<class> class P> struct MAP_VV;
 template<class T, template<class> class P, T... Vs> struct MAP_VV<VALUES<T, Vs...>, P> : VALUES< typename P<T>::type, P<T>::template f<Vs>::value... > {};
 template<class T, template<class> class P> using map_vv = typename MAP_VV<T, P>::values;
+
+namespace test_map {
+	static_assert(same<map_tt<TYPES<bool, float, double>, std::add_const>, TYPES<const bool, const float, const double>>(), "map");
+	static_assert(same<map_tv<TYPES<bool, float, double>, SIZEOF>, VALUES<size_t, 1,4,8>>(), "map");
+	static_assert(same< map_vt<VALUES<int, 1,3,5>, MAKE_VALUE>, TYPES<STATIC<int,1>, STATIC<int,3>, STATIC<int,5>> >(), "map");
+	static_assert(same< map_vv<VALUES<int, 1,3,5>, INC>, VALUES<int, 2,4,6>>(), "map");
+}
 
 template<class T, template<class,class> class B, class S = void> struct REDUCE_TT;
 template<template<class,class> class B, class S> struct REDUCE_TT<TYPES<>, B, S> : TYPE<S> {};
