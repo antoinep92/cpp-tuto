@@ -35,11 +35,9 @@ using std::exception;
 struct SourceContext {
 	string file;
 	int line;
-	std::string function;
 	operator string () const {
 		stringstream ss;
 		ss << file << ':' << line;
-		if(!function.empty()) ss << " in " << function;
 		return ss.str();
 	}
 };
@@ -59,7 +57,7 @@ struct EUnitFail : exception {
 template<bool b> struct t_sta;
 template<> struct t_sta<true> {};
 
-#define HERE SourceContext{__FILE__, __LINE__, __FUNCTION__}
+#define HERE SourceContext{__FILE__, __LINE__}
 
 struct t_dyn {
 	SourceContext context;
@@ -138,14 +136,67 @@ using FALSE = STATIC<bool, false>;
 
 template<class A, class B> using add = STATIC<common<typename A::type, typename B::type>, A::value + B::value>;
 template<class X> using inc = STATIC<typename X::type, 1 + X::value>;
+
 namespace test_valop {
 	static_assert(inc<ZERO<int>>::value == 1, "valop");
 	static_assert(add<STATIC<int, 3>, STATIC<int, 10>>::value == 13, "valop");
 }
 
+template<class T> struct POSITIVE : TYPE<bool> {
+	template<T x> using f = STATIC<bool, (x >= 0)>;
+};
+template<class T> struct NEGATIVE : TYPE<bool> {
+	template<T x> using f = STATIC<bool, (x < 0)>;
+};
+template<class T> struct INC : TYPE<T> {
+	template<T x> using f = STATIC<T, x+1>;
+};
+template<class T> struct DEC : TYPE<T> {
+	template<T x> using f = STATIC<T, x-1>;
+};
+
+namespace test_func {
+	static_assert(DEC<int>::f<1>::value == 0, "func");
+	static_assert(INC<int>::f<0>::value == 1, "func");
+	static_assert(POSITIVE<int>::f<3>::value, "pred");
+	static_assert(!POSITIVE<int>::f<-2>::value, "pred");
+	static_assert(NEGATIVE<int>::f<-1>::value, "pred");
+}
+
+template<class T> struct ADD {
+	template<T a, T b> using bin = STATIC<T, a+b>;
+};
+template<class T> struct MUL {
+	template<T a, T b> using bin = STATIC<T, a*b>;
+};
+
+namespace test_bin {
+	static_assert(ADD<int>::bin<3,2>::value == 5, "bin");
+	static_assert(MUL<int>::bin<3,2>::value == 6, "bin");
+}
+
+template<template<class> class Bin, template<class> class Val> struct BIND_P {
+	template<class T> struct F : TYPE<T> {
+		template<T x> using f = STATIC<T, Bin<T>::template bin<x, Val<T>::value>::value>;
+	};
+};
+
+template<template<class> class Bin, class X, X V> struct BIND_V {
+	template<class T> struct F : TYPE<T> {
+		template<T x> using f = STATIC<T, Bin<T>::template bin<x, T(V)>::value>;
+	};
+};
+
+namespace test_bind {
+	static_assert(BIND_P<ADD, ONE>::F<int>::f<2>::value == 3, "bind");
+	static_assert(BIND_V<MUL, int, 2>::F<int>::f<3>::value == 6, "bind");
+}
+
+
 template<class A, class B> struct SAME : FALSE {};
 template<class T> struct SAME<T,T> : TRUE {};
 template<class A, class B> constexpr bool same() { return SAME<A,B>::value; }
+
 namespace test_same {
 	static_assert(same<bool, bool>(), "same");
 	static_assert(same<TYPE<int>::type, int>(), "same");
@@ -253,7 +304,7 @@ template<class T, template<class> class P> constexpr typename std::enable_if<isT
 
 template<class T, template<class> class P> struct COUNT_V;
 template<class T, template<class> class P> struct COUNT_V<VALUES<T>, P> : ZERO<uint> {};
-template<class T, template<class> class P, T F, T... Ns> struct COUNT_V<VALUES<T, F, Ns...>, P> : STATIC<uint, (P<T>::template pred<F>::value ? 1:0) + COUNT_V<VALUES<T, Ns...>, P>::value> {};
+template<class T, template<class> class P, T F, T... Ns> struct COUNT_V<VALUES<T, F, Ns...>, P> : STATIC<uint, (P<T>::template f<F>::value ? 1:0) + COUNT_V<VALUES<T, Ns...>, P>::value> {};
 template<class T, template<class> class P> constexpr typename std::enable_if<isValues<T>(), uint>::type count_v() { return COUNT_V<T, P>::value; }
 
 template<class T, template<class> class P> struct FILTER_T;
@@ -268,7 +319,7 @@ template<class T, template<class> class P> using filter_t = typename FILTER_T<T,
 template<class T, template<class> class P> struct FILTER_V;
 template<class T, template<class> class P> struct FILTER_V<VALUES<T>, P> : VALUES<T> {};
 template<class T, template<class> class P, T F, T... Vs> struct FILTER_V<VALUES<T, F, Vs...>, P> : COND<
-	P<T>::template pred<F>::value,
+	P<T>::template f<F>::value,
 	typename CONS_V< T, F, typename FILTER_V<VALUES<T, Vs...>, P>::values >::type,
 	typename FILTER_V<VALUES<T, Vs...>, P>::values
 >::type::values {};
@@ -283,11 +334,11 @@ template<template<class> class P, class... Ts> struct MAP_TV<TYPES<Ts...>, P> : 
 template<class T, template<class> class P> using map_tv = typename MAP_TV<T, P>::values;
 
 template<class T, template<class> class P> struct MAP_VT;
-template<class T, template<class> class P, T... Vs> struct MAP_VT<VALUES<T, Vs...>, P> : TYPES< typename P<T>::template pred<Vs>::type... > {};
+template<class T, template<class> class P, T... Vs> struct MAP_VT<VALUES<T, Vs...>, P> : TYPES< typename P<T>::template f<Vs>::type... > {};
 template<class T, template<class> class P> using map_vt = typename MAP_VT<T, P>::types;
 
 template<class T, template<class> class P> struct MAP_VV;
-template<class T, template<class> class P, T... Vs> struct MAP_VV<VALUES<T, Vs...>, P> : VALUES< typename P<T>::type, P<T>::template pred<Vs>::value... > {};
+template<class T, template<class> class P, T... Vs> struct MAP_VV<VALUES<T, Vs...>, P> : VALUES< typename P<T>::type, P<T>::template f<Vs>::value... > {};
 template<class T, template<class> class P> using map_vv = typename MAP_VV<T, P>::values;
 
 template<class T, template<class,class> class B, class S = void> struct REDUCE_TT;
@@ -356,25 +407,12 @@ template<class... Ts> std::ostream & operator<<(std::ostream & s, const std::tup
 	return s << ')';
 }
 
-template<class T> struct POSITIVE : TYPE<bool> {
-	template<T x> using pred = STATIC<bool, (x >= 0)>;
-};
-template<class T> struct NEGATIVE : TYPE<bool> {
-	template<T x> using pred = STATIC<bool, (x < 0)>;
-};
-template<class T> struct SUM {
-	template<T a, T b> using bin = STATIC<T, a+b>;
-};
-template<class T> struct DEC : TYPE<T> {
-	template<T x> using pred = STATIC<T, x-1>;
-};
-
 template<int... args> struct ints {
 	using ARGS = VALUES<int, args...>;
 	static const uint n = len<ARGS>();
 	static const uint n_static = count_v<ARGS, POSITIVE>(), n_dynamic = n - n_static;
 	using DYN = map_vv<ARGS, NEGATIVE>;
-	using INDEX = map_vv< cumul<cast_v<DYN, int>, SUM>, DEC>;
+	using INDEX = map_vv< cumul<cast_v<DYN, int>, ADD>, DEC>;
 	uint data[n_dynamic];
 	
 	template<int i> int read() const {
