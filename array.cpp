@@ -346,6 +346,7 @@ namespace test_is {
 	static_assert(!isValue<NIL>(), "is");
 }
 
+
 template<class H, class T> struct CONS_T;
 template<class H, class... Ts> struct CONS_T<H, TYPES<Ts...>> : TYPES<H, Ts...> {};
 template<class H, class T> using cons_t = typename CONS_T<H, T>::types;
@@ -410,6 +411,36 @@ namespace test_len {
 	static_assert(len<TYPES<int, double>>() == 2, "len");
 	static_assert(len<VALUES<bool>>() == 0, "len");
 	static_assert(len<VALUES<char, 't','e','s','t'>>() == 4, "len");
+}
+
+template<int i, bool ok, class T, T... args> struct values_printer {
+	static void f(std::ostream & s, const VALUES<T, args...> & vals) {
+		if(i) s << ", ";
+		s << '$' << at_v<VALUES<T, args...>, i>();
+		values_printer<i+1, (i < len<VALUES<T, args...>>()-1), T, args...>::f(s, vals);
+	}
+};
+template<int i, class T, T... args> struct values_printer<i, false, T, args...> {
+	static void f(std::ostream & s, const VALUES<T, args...> & vals) {}
+};
+
+template<class T, T... args> inline void print_values(std::ostream & s, const VALUES<T, args...> & vals) {
+	values_printer<0, (len<VALUES<T, args...>>() > 0), T, args...>::f(s, vals);
+};
+
+template<class T, T... args> std::ostream & operator<<(std::ostream & s, const VALUES<T, args...> & vals) {
+	s << '(';
+	print_values(s, vals);
+	return s << ')';
+};
+
+namespace test_values_print {
+	t_dyn u1(HERE, []() {
+		VALUES<int, 5,3,7> v;
+		stringstream ss;
+		ss << v;
+		return ss.str() == "($5, $3, $7)";
+	});
 }
 
 template<class T, template<class> class P> struct COUNT_T;
@@ -506,27 +537,6 @@ template<class T, class Target, T... Vals> struct CAST_V<VALUES<T, Vals...>, Tar
 template<class Vals, class Target> using cast_v = typename CAST_V<Vals, Target>::values;
 
 
-
-template<int i, bool ok, class T, T... args> struct values_printer {
-	static void f(std::ostream & s, const VALUES<T, args...> & vals) {
-		if(i) s << ", ";
-		s << '$' << at_v<VALUES<T, args...>, i>();
-		values_printer<i+1, (i < len<VALUES<T, args...>>()-1), T, args...>::f(s, vals);
-	}
-};
-template<int i, class T, T... args> struct values_printer<i, false, T, args...> {
-	static void f(std::ostream & s, const VALUES<T, args...> & vals) {}
-};
-
-template<class T, T... args> inline void print_values(std::ostream & s, const VALUES<T, args...> & vals) {
-	values_printer<0, (len<VALUES<T, args...>>() > 0), T, args...>::f(s, vals);
-};
-
-template<class T, T... args> std::ostream & operator<<(std::ostream & s, const VALUES<T, args...> & vals) {
-	s << "VALUES(";
-	print_values(s, vals);
-	return s << ')';
-};
 
 
 
