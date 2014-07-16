@@ -58,12 +58,12 @@ template<class T, ValueKind SD = dyn, T V = T()> struct VALUE;
 
 template<class T, T V> struct VALUE<T, sta, V> : TYPE<T>, VALUE_KIND<sta> {
 	static const T value = V;
-	operator const T & () const { return value; }
+	operator T () const { return value; }
 };
 
 template<class T, T V> struct VALUE<T, dyn, V> : TYPE<T>, VALUE_KIND<dyn> {
 	T value;
-	operator const T & () const { return value; }
+	operator T () const { return value; }
 	operator T & () { return value; }
 	template<class U> T & operator=(const U & v) { return value = v; }
 	VALUE(T v = T()) : value(v) {}
@@ -111,7 +111,7 @@ template<class... Ts> using common = typename std::common_type<Ts...>::type;
 template<class A, class B> using COMMON2 = std::common_type<A,B>;
 template<class A, class B> using common2 = typename std::common_type<A, B>::type;
 namespace test_common {
-	static_assert(same<common<int,char,short>, int>, "common");
+	static_assert(same<common<int,char,short>, int>(), "common");
 }
 
 
@@ -172,11 +172,14 @@ struct SourceContext {
 	}
 };
 
-struct ELocalizedException : exception {
+struct E : exception {
 	const string msg;
-	ELocalizedException() : msg() {}
-	template<class... Args> ELocalizedException(const SourceContext & context, const Args & ... args) : msg(format(context, args...)) {}
-	ELocalizedException(const std::string & desc) : msg(desc) {}
+	E(const string & msg) : msg(msg) {}
+	const char* what() const noexcept { return msg.c_str(); }
+};
+struct ELocalizedException : E {
+	template<class... Args> ELocalizedException(const SourceContext & context, const Args & ... args) : E(format(context, args...)) {}
+	ELocalizedException(const std::string & desc) : E(desc) {}
 	template<class S> static void print_lines(S &) {}
 	template<class S, class F, class... Args> static void print_lines(S & s, const F & f, const Args & ... args) {
 		s << f << '\n';
@@ -188,7 +191,7 @@ struct ELocalizedException : exception {
 		print_lines(ss, args...);
 		return ss.str();
 	}
-	const char* what() const noexcept { return msg.c_str(); }
+	
 };
 
 struct EUnitFail : ELocalizedException {
@@ -241,7 +244,67 @@ namespace test_value_print {
 	});
 }
 
+template<class... Ts> struct NARGS;
+template<> struct NARGS<> : ZERO<uint> {};
+template<class H, class... Ts> struct NARGS<H, Ts...> : inc<NARGS<Ts...>> {};
+template<class... Ts> constexpr uint nargs() { return NARGS<Ts...>::value; }
 
+template<int... args> using ints_t = std::tuple< VALUE<uint, args < 0 ? dyn : sta, args < 0 ? 0 : args>... >;
+
+template<int I, int N> struct tuple_ostream {
+	template<class... Ts> static void f(std::ostream & s, const std::tuple<Ts...> & tp) {
+		if(I) s << ", ";
+		s << std::get<I>(tp);
+		tuple_ostream<I+1, N>::f(s, tp);
+	}
+};
+template<int N> struct tuple_ostream<N,N> {
+	template<class... Ts> static void f(std::ostream &, const std::tuple<Ts...> &) {}
+};
+template<class... Ts> std::ostream & operator<<(std::ostream & s, const std::tuple<Ts...> & tp) {
+	s << "tuple(";
+	tuple_ostream<0, nargs<Ts...>()>::f(s, tp);
+	return s << ')';
+}
+
+namespace tuple_print_test {
+	static t_dyn u1(HERE, []() {
+		std::tuple<int, char, string> v(3, 'a', "test");
+		stringstream ss;
+		ss << v;
+		return ss.str() == "tuple(3, a, test)";
+	});
+}
+
+template<class In, template<In> class F, In begin, In end, In cur = begin> struct DISPATCH_LINEAR {
+	template<class... Args> static decltype(F<cur>::f(declval<Args>()...)) f(In dyn, Args && ... args) {
+		if(cur == dyn) return F<cur>::f(args...);
+		else return DISPATCH_LINEAR<In, F, begin,end,cur+1>::f(dyn, args...);
+	}
+};
+template<class In, template<In> class F, In begin, In end> struct DISPATCH_LINEAR<In, F, begin, end, end> {
+	template<class... Args> static decltype(F<begin>::f(declval<Args>()...)) f(In dyn, Args && ... args) {
+		throw E("out of bounds in linear dispatch");
+	}
+};
+template<class In, template<In> class F, In begin, In end, class... Args> inline decltype(F<begin>::f(declval<Args>()...)) dispatch_linear(In dyn, Args && ... args) {
+	return DISPATCH_LINEAR<In, F, begin, end>::f(dyn, args...);
+}
+
+namespace ints_tuple_test {
+	template<int i> struct get_tuple {
+		template<class... Ts> static int f(const std::tuple<Ts...> & t) { return std::get<i>(t); }
+	};
+	static t_dyn u1(HERE, []() {
+		ints_t<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> v;
+		std::get<3>(v) = 3;
+		
+		for(int i = 0; i < 16; ++i) if(dispatch_linear<int,get_tuple,0,16>(i,v) != i) return false;
+		stringstream ss;
+		ss << v;
+		return ss.str() == "tuple(0, $1, $2, 3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)";
+	});
+}
 
 
 #define MAKE_OP(_NAME_, _OP_, _OUT_, _INIT_) \
@@ -429,7 +492,7 @@ template<class T, T... args> inline void print_values(std::ostream & s, const VA
 };
 
 template<class T, T... args> std::ostream & operator<<(std::ostream & s, const VALUES<T, args...> & vals) {
-	s << '(';
+	s << "values(";
 	print_values(s, vals);
 	return s << ')';
 };
@@ -439,7 +502,7 @@ namespace test_values_print {
 		VALUES<int, 5,3,7> v;
 		stringstream ss;
 		ss << v;
-		return ss.str() == "($5, $3, $7)";
+		return ss.str() == "values($5, $3, $7)";
 	});
 }
 
@@ -538,26 +601,6 @@ template<class Vals, class Target> using cast_v = typename CAST_V<Vals, Target>:
 
 
 
-
-
-template<int... args> using ints_t = std::tuple< VALUE<uint, args < 0 ? dyn : sta, args < 0 ? 0 : args>... >;
-
-template<int I, int N> struct tuple_ostream {
-	template<class... Ts> static void f(std::ostream & s, const std::tuple<Ts...> & tp) {
-		if(I) s << ", ";
-		s << std::get<I>(tp);
-		tuple_ostream<I+1, N>::f(s, tp);
-	}
-};
-template<int N> struct tuple_ostream<N,N> {
-	template<class... Ts> static void f(std::ostream &, const std::tuple<Ts...> &) {}
-};
-template<class... Ts> std::ostream & operator<<(std::ostream & s, const std::tuple<Ts...> & tp) {
-	s << "tuple(";
-	tuple_ostream<0, len<TYPES<Ts...>>()>::f(s, tp);
-	return s << ')';
-}
-
 template<int... args> struct ints {
 	using ARGS = VALUES<int, args...>;
 	static const uint n = len<ARGS>();
@@ -607,13 +650,14 @@ int main() {
 		cout << sizeof(v) << endl;
 		cout << v << endl;
 	}
-	
-	using T = ints<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>;
-	T v;
-	v.write<3>() = 3;
-	cout << "sizeof = " << sizeof(v) << " | n = " << v.n << " | n_static = " << v.n_static << endl;
-	/*cout << T::DYN() << endl;
-	cout << T::INDEX() << endl;*/
-	cout << v << endl;
+	{
+		using T = ints<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>;
+		T v;
+		v.write<3>() = 3;
+		cout << "sizeof = " << sizeof(v) << " | n = " << v.n << " | n_static = " << v.n_static << endl;
+		/*cout << T::DYN() << endl;
+		cout << T::INDEX() << endl;*/
+		cout << v << endl;
+	}
 	return 0;
 }
