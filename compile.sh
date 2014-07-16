@@ -1,7 +1,7 @@
 #!/bin/sh
 while true ; do
 	hash=$(shasum $1 | cut -d' ' -f1)
-	clang++ -std=c++11 -fcolor-diagnostics $1 2>/tmp/build
+	clang++ -std=c++11 -g -fcolor-diagnostics -fsanitize=undefined -fsanitize=address -fsanitize=integer $1 2>/tmp/build
 	kill %1
 	less -R /tmp/build &
 	while true ; do
