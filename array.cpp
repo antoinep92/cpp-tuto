@@ -295,11 +295,15 @@ namespace ints_tuple_test {
 	template<int i> struct get_tuple {
 		template<class... Ts> static int f(const std::tuple<Ts...> & t) { return std::get<i>(t); }
 	};
+	using V = ints_t<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>;
 	static t_dyn u1(HERE, []() {
-		ints_t<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> v;
-		std::get<3>(v) = 3;
-		
-		for(int i = 0; i < 16; ++i) if(dispatch_linear<int,get_tuple,0,16>(i,v) != i) return false;
+		V v; std::get<3>(v) = 3;
+		for(int i = 0; i < 16; ++i)
+			if(dispatch_linear<int,get_tuple,0,16>(i,v) != i) return false;
+		return true;
+	});
+	static t_dyn u2(HERE, []() {
+		V v; std::get<3>(v) = 3;
 		stringstream ss;
 		ss << v;
 		return ss.str() == "tuple(0, $1, $2, 3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)";
@@ -642,19 +646,43 @@ template<int... args> std::ostream & operator<<(std::ostream & s, const ints<arg
 	return s << ')';
 };
 
+namespace ints_test {
+	template<int i> struct read {
+		template<int... Vs> static int f(const ints<Vs...> & vs) { return vs.template read<i>(); }
+	};
+	using V = ints<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>;
+	static_assert(V::n == 16, "ints");
+	static_assert(V::n_static == 14, "ints");
+	static_assert(V::n_dynamic == 2, "ints");
+	static t_dyn u1(HERE, []() {
+		V v;
+		v.write<3>() = 3;
+		for(int i = 0; i < 16; ++i)
+			if(dispatch_linear<int,read,0,16>(i,v) != i) return false;
+		return true;
+	});
+	static t_dyn u2(HERE, []() {
+		V v; v.write<3>() = 3;
+		stringstream ss;
+		ss << v;
+		return ss.str() == "ints(0, $1, $2, 3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)";
+	});
+}
+
 
 int main() {
 	{
 		ints_t<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15> v;
 		std::get<3>(v) = 3;
-		cout << sizeof(v) << endl;
+		cout << "sizeof = " << sizeof(v) << endl;
 		cout << v << endl;
 	}
+	cout << endl;
 	{
 		using T = ints<-1, 1, 2, -1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15>;
 		T v;
 		v.write<3>() = 3;
-		cout << "sizeof = " << sizeof(v) << " | n = " << v.n << " | n_static = " << v.n_static << endl;
+		cout << "sizeof = " << sizeof(v) << " | n = " << v.n << " | n_static = " << v.n_static << " | n_dynamic = " << v.n_dynamic << endl;
 		/*cout << T::DYN() << endl;
 		cout << T::INDEX() << endl;*/
 		cout << v << endl;
