@@ -1,4 +1,5 @@
 #pragma once // basic containers for types and (integral typed) values
+#include "val_base.h"
 #include "test.h"
 #include <iostream>
 

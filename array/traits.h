@@ -1,7 +1,6 @@
 #pragma once // basic introspection, traits and meta data on types and functions
+#include "val_base.h"
 #include <type_traits>
-using TRUE = std::true_type;
-using FALSE = std::false_type;
 template<class A, class B> constexpr bool same() { return std::is_same<A,B>::value; }
 template<class A, class B> constexpr bool convertible() { return std::is_convertible<A,B>::value; }
 using std::declval;
@@ -49,8 +48,8 @@ namespace test_callable {
 		template<class U> static FALSE f(...); \
 		static const bool value = decltype(f<T>(0))::value; \
 	}; \
-	template<class T> constexpr bool has_type_ ## _T_ () { return has_type ## _T_ ## _v<T>::value; } \
-	template<class T> constexpr bool fName_(const T &) { return has_type ## _T_ ## _v<T>::value; }
+	template<class T> constexpr bool has_type_ ## _T_ () { return has_type_ ## _T_ ## _v<T>::value; } \
+	template<class T> constexpr bool fName_(const T &) { return has_type_ ## _T_ ## _v<T>::value; }
 
 namespace test_typedef_test {
 	struct x { using foo = void; };
