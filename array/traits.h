@@ -41,3 +41,19 @@ namespace test_callable {
 	static_assert(!call_convertible<int()>(int_int), "callable");
 	static_assert(call_convertible<int(int)>(int_int), "callable");
 }
+
+
+#define TYPEDEF_TEST(_T_) \
+	template<class T> struct has_type_ ## _T_ ## _v : TYPE<bool> { \
+		template<class U> static TRUE  f(typename U::_T_ *); \
+		template<class U> static FALSE f(...); \
+		static const bool value = decltype(f<T>(0))::value; \
+	}; \
+	template<class T> constexpr bool has_type_ ## _T_ () { return has_type ## _T_ ## _v<T>::value; } \
+	template<class T> constexpr bool fName_(const T &) { return has_type ## _T_ ## _v<T>::value; }
+
+namespace test_typedef_test {
+	struct x { using foo = void; };
+	TYPEDEF_TEST(foo);
+	static_assert(has_type_foo<x>(), "typedef_test");
+}

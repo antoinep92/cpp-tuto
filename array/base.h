@@ -59,14 +59,5 @@ template<class In, template<In> class F, In begin, In end, class... Args> inline
 }
 
 
-#define TYPEDEF_TEST(fName_, typeName_) \
-	template<class T> struct fName_ ## _ : FALSE { \
-		template<class U> static YES f(typename U::typeName_ *); \
-		template<class U> static NO f(...); \
-		static const bool value = (sizeof(YES) == sizeof(f<T>(0))); \
-	}; \
-	template<class T> constexpr bool fName_() { return fName_ ## _<T>::value; } \
-	template<class T> constexpr bool fName_(const T &) { return fName_ ## _<T>::value; }
-
 struct NIL { using nil_tag = void; };
 TYPEDEF_TEST(isNil, nil_tag)
