@@ -48,11 +48,24 @@ namespace test_callable {
 		template<class U> static FALSE f(...); \
 		static const bool value = decltype(f<T>(0))::value; \
 	}; \
-	template<class T> constexpr bool has_type_ ## _T_ () { return has_type_ ## _T_ ## _v<T>::value; } \
-	template<class T> constexpr bool fName_(const T &) { return has_type_ ## _T_ ## _v<T>::value; }
+	template<class T> constexpr bool has_type_ ## _T_ () { return has_type_ ## _T_ ## _v<T>::value; }
 
 namespace test_typedef_test {
 	struct x { using foo = void; };
 	TYPEDEF_TEST(foo);
 	static_assert(has_type_foo<x>(), "typedef_test");
+}
+
+#define STATIC_FIELD_TEST(_F_) \
+	template<class T> struct has_static_field_ ## _F_ ## _v : TYPE<bool> { \
+		template<class U> static TRUE  f(decltype(U::_F_) *); \
+		template<class U> static FALSE f(...); \
+		static const bool value = decltype(f<T>(0))::value; \
+	}; \
+	template<class T> constexpr bool has_static_field_ ## _F_ () { return has_static_field_ ## _F_ ## _v<T>::value; }
+
+namespace test_static_field_test {
+	struct x { static const int bar = 0; };
+	STATIC_FIELD_TEST(bar);
+	static_assert(has_static_field_bar<x>(), "static_field_test");
 }
