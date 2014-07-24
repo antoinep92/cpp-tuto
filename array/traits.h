@@ -3,6 +3,7 @@
 #include <type_traits>
 template<class A, class B> constexpr bool same() { return std::is_same<A,B>::value; }
 template<class A, class B> constexpr bool convertible() { return std::is_convertible<A,B>::value; }
+template<class T> constexpr bool is_empty() { return std::is_empty<T>::value; }
 using std::declval;
 
 template<class T, class... Args> struct CALLABLE {
@@ -68,4 +69,21 @@ namespace test_static_field_test {
 	struct x { static const int bar = 0; };
 	STATIC_FIELD_TEST(bar);
 	static_assert(has_static_field_bar<x>(), "static_field_test");
+}
+
+
+TYPEDEF_TEST(nil_t)
+template<class T> constexpr bool is_nil() { return has_type_nil_t<T>() && is_empty<T>(); }
+namespace test_is_nil {
+	static_assert(is_nil<NIL>(), "is nil");
+	static_assert(!is_nil<FALSE>(), "is nil");
+}
+
+TYPEDEF_TEST(type);
+STATIC_FIELD_TEST(value);
+template<class T> constexpr bool is_static_value() { return has_type_type<T>() && has_static_field_value<T>(); }
+namespace test_is_static_value {
+	static_assert(is_static_value<std::true_type>(), "is static value");
+	static_assert(is_static_value<FALSE>(), "is static value");
+	static_assert(!is_static_value<NIL>(), "is static value");
 }

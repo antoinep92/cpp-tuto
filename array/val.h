@@ -23,6 +23,3 @@ namespace test_value_print {
 	});
 }
 
-TYPEDEF_TEST(type)
-FIELD_TEST(value)
-template<class T> constexpr bool is_value() { return has_type_type<T>() && has_field_value<T>(); }

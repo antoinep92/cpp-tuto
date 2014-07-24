@@ -46,3 +46,5 @@ using FALSE = STATIC<bool, false>;
 template<class T> struct MAKE_VALUE {
 	template<T x> using f = STATIC<T,x>;
 };
+
+struct NIL { using nil_t = NIL; };
