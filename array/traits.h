@@ -6,6 +6,15 @@ template<class A, class B> constexpr bool convertible() { return std::is_convert
 template<class T> constexpr bool is_empty() { return std::is_empty<T>::value; }
 using std::declval;
 
+template<class... Ts> using common = typename std::common_type<Ts...>::type;
+template<class A, class B> using common2_t = std::common_type<A,B>;
+template<class A, class B> using common2 = typename std::common_type<A, B>::type;
+namespace test_common {
+	static_assert(same<common<int,char,short>, int>(), "common");
+}
+
+template<class T> using VOID = void;
+
 template<class T, class... Args> struct CALLABLE {
 	template<class U> static TRUE f(decltype(declval<U>()(declval<Args>()...))*);
 	template<class U> static FALSE f(...);
@@ -41,6 +50,8 @@ namespace test_callable {
 	static_assert(!call_convertible<int()>(int_int), "callable");
 	static_assert(call_convertible<int(int)>(int_int), "callable");
 }
+
+
 
 
 #define TYPEDEF_TEST(_T_) \

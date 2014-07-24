@@ -1,5 +1,10 @@
 // meta sequence of types and values
 
+template<class... Ts> struct NARGS;
+template<> struct NARGS<> : ZERO<size_t> {};
+template<class H, class... Ts> struct NARGS<H, Ts...> : inc<NARGS<Ts...>> {};
+template<class... Ts> constexpr size_t nargs() { return NARGS<Ts...>::value; }
+
 template<class... Ts> struct TYPES { using types = TYPES<Ts...>; };
 template<class T, T... args> struct VALUES : TYPE<T> { using values = VALUES<T, args...>; };
 TYPEDEF_TEST(isTypes, types)
