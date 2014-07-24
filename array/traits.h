@@ -1,7 +1,9 @@
+#pragma once // basic introspection, traits and meta data on types and functions
 #include <type_traits>
 using TRUE = std::true_type;
 using FALSE = std::false_type;
 template<class A, class B> constexpr bool same() { return std::is_same<A,B>::value; }
+template<class A, class B> constexpr bool convertible() { return std::is_convertible<A,B>::value; }
 using std::declval;
 
 template<class T, class... Args> struct CALLABLE {
