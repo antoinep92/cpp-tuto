@@ -26,3 +26,7 @@ core.6*
 core.7*
 core.8*
 core.9*
+
+# Hidden & temp files
+.*
+*~
