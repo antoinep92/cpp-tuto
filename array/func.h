@@ -11,7 +11,8 @@ template<int Arity, class Func> struct FCRTP {
 	using func_t = Func;
 	using Func::f;
 	using Func::template R;
-	template<class... Args> struct specialize = cond_t<count_t<Args...>() == Arity, FSPEC<Arity, Func, Args...>, NIL> {};
+	template<class... Args> using specialize = FSPEC<Arity, Func, Args...>;
+	template<class... Args> using val = STATIC<typename R<Args...>, f(Args...)>;
 };
 
 template<int Arity, int Arg> struct select_fn : FCRTP<Arity, select_fn<Arity, Arg>> {
