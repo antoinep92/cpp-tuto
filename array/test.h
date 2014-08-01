@@ -2,8 +2,6 @@
 #include "traits.h"
 #include <sstream>
 #include <exception>
-#include <type_traits>
-using std::enable_if;
 
 struct SourceContext {
 	std::string file;

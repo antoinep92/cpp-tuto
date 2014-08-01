@@ -4,6 +4,8 @@
 
 template<class T> using VOID = void;
 
+using std::enable_if;
+
 template<class A, class B> using same_t = std::is_same<A, B>;
 template<class A, class B> constexpr bool same() { return same_t<A,B>::value; } // A == B
 static_assert(same<int, int>(), "same");
@@ -67,12 +69,12 @@ namespace test_callable {
 
 
 #define TYPEDEF_TEST(_T_) \
-	template<class T> struct has_type_ ## _T_ ## _v : type_t<bool> { \
+	template<class T> struct has_type_ ## _T_ ## _t : type_t<bool> { \
 		template<class U> static true_t  f(typename U::_T_ *); \
 		template<class U> static false_t f(...); \
 		static const bool value = decltype(f<T>(0))::value; \
 	}; \
-	template<class T> constexpr bool has_type_ ## _T_ () { return has_type_ ## _T_ ## _v<T>::value; }
+	template<class T> constexpr bool has_type_ ## _T_ () { return has_type_ ## _T_ ## _t<T>::value; }
 
 namespace test_typedef_test {
 	struct x { using foo = void; };
@@ -81,12 +83,12 @@ namespace test_typedef_test {
 }
 
 #define CONST_TEST(_F_) \
-	template<class T> struct has_const_ ## _F_ ## _v : type_t<bool> { \
+	template<class T> struct has_const_ ## _F_ ## _t : type_t<bool> { \
 		template<class U> static true_t  f(decltype(U::_F_) *); \
 		template<class U> static false_t f(...); \
 		static const bool value = decltype(f<T>(0))::value; \
 	}; \
-	template<class T> constexpr bool has_const_ ## _F_ () { return has_const_ ## _F_ ## _v<T>::value; }
+	template<class T> constexpr bool has_const_ ## _F_ () { return has_const_ ## _F_ ## _t<T>::value; }
 
 namespace test_const_test {
 	struct x { static const int bar = 0; };
@@ -95,33 +97,3 @@ namespace test_const_test {
 }
 
 
-TYPEDEF_TEST(nil_t)
-template<class T> constexpr bool is_nil() { return has_type_nil_t<T>() && zero_size<T>(); }
-namespace test_is_nil {
-	static_assert(is_nil<NIL>(), "is nil");
-	static_assert(!is_nil<false_t>(), "is nil");
-}
-
-TYPEDEF_TEST(type);
-CONST_TEST(value);
-template<class T, bool v = has_type_type<T>() && has_const_value<T>()> struct is_value_t : false_t {};
-template<class T> struct is_value_t<T, true> : same_t<typename T::type, remove_cv<decltype(T::value)>> {};
-template<class T> constexpr bool is_value() { return is_value_t<T>::value; }
-namespace test_is_value {
-	static_assert(has_type_type<true_t>(), "is value");
-	static_assert(has_const_value<true_t>(), "is value");
-	static_assert(is_value<true_t>(), "is value");
-	static_assert(is_value<false_t>(), "is value");
-	static_assert(!is_value<NIL>(), "is value");
-	struct X { using type = float; static const int value = 3; };
-	static_assert(!is_value<X>(), "is value");
-}
-
-template<class A, class B> struct same_type_t : same_t<typename A::type, typename B::type> {};
-template<class A, class B> constexpr bool same_type() { return same_type_t<A, B>::value; }
-
-template<class A, class B, bool v = is_value<A>() && is_value<B>()> struct same_value_t : false_t {};
-template<class A, class B, bool v = same<typename A::type, typename B::type>()> struct same_value_ : false_t {};
-template<class A, class B> struct same_value_<A, B, true> : bool_t<A::value == B::value> {};
-template<class A, class B> struct same_value_t<A, B, true> : same_value_<A, B> {};
-template<class A, class B> constexpr bool same_value() { return same_value_t<A, B>::value; };

@@ -44,5 +44,3 @@ using true_t = static_t<bool, true>;
 using false_t = static_t<bool, false>;
 template<bool b> using bool_t = static_t<bool, b>;
 template<int i> using int_t = static_t<int, i>;
-
-struct NIL { using nil_t = NIL; };
