@@ -2,12 +2,15 @@
 #include "val_base.h"
 #include <type_traits>
 
+#define GEN_CXPR1(NAME) template<class A> constexpr decltype(NAME ## _t<A>::value) NAME() { return NAME ## _t<A>::value; }
+#define GEN_CXPR2(NAME) template<class A, class B> constexpr decltype(NAME ## _t<A,B>::value) NAME() { return NAME ## _t<A,B>::value; }
+
 template<class T> using VOID = void;
 
 using std::enable_if;
 
 template<class A, class B> using same_t = std::is_same<A, B>;
-template<class A, class B> constexpr bool same() { return same_t<A,B>::value; } // A == B
+GEN_CXPR2(same)
 static_assert(same<int, int>(), "same");
 
 template<class T> using remove_cv = typename std::remove_cv<T>::type;
@@ -26,7 +29,7 @@ template<bool C, class T, class F> using cond = typename cond_t<C,T,F>::type;
 
 template<int id, class... Args> struct select_t;
 template<int id, class First, class... Rest> struct select_t<id, First, Rest...> : select_t<id-1, Rest...> {};
-template<class First, class... Rest> struct select_t<0, First, Rest...> : type_t<First> {};
+template<class First, class... Rest> struct select_t<0, First, Rest...> : TYPE<First> {};
 
 
 template<class T, class... Args> struct callable_t {
@@ -66,10 +69,8 @@ namespace test_callable {
 }
 
 
-
-
 #define TYPEDEF_TEST(_T_) \
-	template<class T> struct has_type_ ## _T_ ## _t : type_t<bool> { \
+	template<class T> struct has_type_ ## _T_ ## _t : TYPE<bool> { \
 		template<class U> static true_t  f(typename U::_T_ *); \
 		template<class U> static false_t f(...); \
 		static const bool value = decltype(f<T>(0))::value; \
@@ -83,7 +84,7 @@ namespace test_typedef_test {
 }
 
 #define CONST_TEST(_F_) \
-	template<class T> struct has_const_ ## _F_ ## _t : type_t<bool> { \
+	template<class T> struct has_const_ ## _F_ ## _t : TYPE<bool> { \
 		template<class U> static true_t  f(decltype(U::_F_) *); \
 		template<class U> static false_t f(...); \
 		static const bool value = decltype(f<T>(0))::value; \
